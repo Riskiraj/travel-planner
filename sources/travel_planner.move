@@ -1,28 +1,47 @@
+#[allow(unused_variable)]
 module travel_planner::travel_planner {
 
     // Imports
-    use sui::object::{Self, UID};
-    use sui::tx_context::{Self, TxContext};
-    use sui::kiosk::{Self, Kiosk, KioskOwnerCap};
-    use sui::transfer_policy::{Self as tp};
-    use sui::package::{Self, Publisher};
     use sui::transfer;
-    use std::string::{String};
-    use std::vector::{self, Vector};
+    use sui::sui::SUI;
+    use std::string::{Self, String};
+    use sui::coin::{Self, Coin};
+    use sui::clock::{Self, Clock};
+    use sui::object::{Self, UID, ID};
+    use sui::balance::{Self, Balance};
+    use sui::tx_context::{Self, TxContext};
+    use sui::table::{Self, Table};
+    use std::vector;
 
-    // Struct definitions
+    // Errors
+    const EInsufficientFunds: u64 = 1;
+    const EInvalidDestination: u64 = 2;
+    const EInvalidUser: u64 = 3;
+    const EInvalidPlan: u64 = 4;
+    const EInvalidAccommodation: u64 = 5;
+    const EInvalidActivity: u64 = 6;
+
+    // Destination
+
+    /// Represents a destination in the travel planner system.
     struct Destination has key {
         id: UID,
         name: String,
         description: String,
     }
 
+    // Itinerary
+
+    /// Represents an itinerary in the travel planner system.
     struct Itinerary has key {
         id: UID,
         destination: UID,
         activities: vector<String>,
     }
 
+    // Plan
+
+    /// Represents a travel plan in the travel planner system.
     struct Plan has key {
         id: UID,
         itinerary: UID,
@@ -33,6 +52,9 @@ module travel_planner::travel_planner {
         user: UID,
     }
 
+    // Accommodation
+
+    /// Represents an accommodation in the travel planner system.
     struct Accommodation has key {
         id: UID,
         name: String,
@@ -40,6 +62,9 @@ module travel_planner::travel_planner {
         price: u64,
     }
 
+    // Activity
+
+    /// Represents an activity in the travel planner system.
     struct Activity has key {
         id: UID,
         name: String,
@@ -47,251 +72,201 @@ module travel_planner::travel_planner {
         price: u64,
     }
 
+    // Transportation
+
+    /// Represents transportation in the travel planner system.
     struct Transportation has key {
         id: UID,
         mode: String,
     }
 
+    // Expense
+
+    /// Represents an expense in the budget.
+    struct Expense has copy, drop, store {
+        name: String,
+        amount: u64,
+    }
+
+    // Budget
+
+    /// Represents a budget in the travel planner system.
     struct Budget has key {
         id: UID,
         total: u64,
-        expenses: vector<(String, u64)>,
+        expenses: vector<Expense>,
     }
 
+    // User
+
+    /// Represents a user in the travel planner system.
     struct User has key {
         id: UID,
         username: String,
         email: String,
+        balance: Balance<SUI>,
     }
 
+    // Publisher
+
+    /// Represents a publisher in the travel planner system.
+    struct Publisher has key, store {
+        id: UID,
+        name: String,
+    }
+
+    // PlatformPublisher
+
+    /// Represents a platform publisher in the travel planner system.
     struct PlatformPublisher has key {
         id: UID,
         publisher: Publisher,
     }
 
+    // AdminCap
+
+    /// Represents admin capabilities in the travel planner system.
     struct AdminCap has key {
         id: UID,
     }
 
-    // Module initializer
-    fun init(ctx: &mut TxContext) {
-        let publisher = package::claim<PLATFORM>(PLATFORM{}, ctx);
-        transfer::share_object(PlatformPublisher {
+    // Create a new Destination
+
+    /// Creates a new destination with the given name and description.
+    public fun create_destination(ctx: &mut TxContext, name: String, description: String) {
+        let destination = Destination {
             id: object::new(ctx),
-            publisher,
-        });
-        transfer::transfer(AdminCap {
+            name: name,
+            description: description,
+        };
+        transfer::share_object(destination);
+    }
+
+    // Create a new User
+
+    /// Creates a new user with the given username and email.
+    public fun create_user(ctx: &mut TxContext, username: String, email: String) {
+        let user = User {
             id: object::new(ctx),
-        }, tx_context::sender(ctx));
+            username: username,
+            email: email,
+            balance: balance::zero(),
+        };
+        transfer::share_object(user);
     }
 
-    // Helper functions for creating objects
-    fun new_destination(name: String, description: String, ctx: &mut TxContext) -> UID {
-        let id = object::new(ctx);
-        transfer::share_object(Destination {
-            id,
-            name,
-            description,
-        });
-        id
+    // Create a new Itinerary
+
+    /// Creates a new itinerary with the given destination and activities.
+    public fun create_itinerary(ctx: &mut TxContext, destination: UID, activities: vector<String>) {
+        let itinerary = Itinerary {
+            id: object::new(ctx),
+            destination: destination,
+            activities: activities,
+        };
+        transfer::share_object(itinerary);
     }
 
-    fun new_itinerary(destination: UID, activities: vector<String>, ctx: &mut TxContext) -> UID {
-        let id = object::new(ctx);
-        transfer::share_object(Itinerary {
-            id,
-            destination,
-            activities,
-        });
-        id
+    // Create a new Plan
+
+    /// Creates a new plan with the given itinerary, accommodation, activity, transportation, budget, and user.
+    public fun create_plan(
+        ctx: &mut TxContext,
+        itinerary: UID,
+        accommodation: UID,
+        activity: UID,
+        transportation: UID,
+        budget: UID,
+        user: UID
+    ) {
+        let plan = Plan {
+            id: object::new(ctx),
+            itinerary: itinerary,
+            accommodation: accommodation,
+            activity: activity,
+            transportation: transportation,
+            budget: budget,
+            user: user,
+        };
+        transfer::share_object(plan);
     }
 
-    fun new_accommodation(name: String, description: String, price: u64, ctx: &mut TxContext) -> UID {
-        let id = object::new(ctx);
-        transfer::share_object(Accommodation {
-            id,
-            name,
-            description,
-            price,
-        });
-        id
+    // Create a new Accommodation
+
+    /// Creates a new accommodation with the given name, description, and price.
+    public fun create_accommodation(ctx: &mut TxContext, name: String, description: String, price: u64) {
+        let accommodation = Accommodation {
+            id: object::new(ctx),
+            name: name,
+            description: description,
+            price: price,
+        };
+        transfer::share_object(accommodation);
     }
 
-    fun new_activity(name: String, description: String, price: u64, ctx: &mut TxContext) -> UID {
-        let id = object::new(ctx);
-        transfer::share_object(Activity {
-            id,
-            name,
-            description,
-            price,
-        });
-        id
+    // Create a new Activity
+
+    /// Creates a new activity with the given name, description, and price.
+    public fun create_activity(ctx: &mut TxContext, name: String, description: String, price: u64) {
+        let activity = Activity {
+            id: object::new(ctx),
+            name: name,
+            description: description,
+            price: price,
+        };
+        transfer::share_object(activity);
     }
 
-    fun new_transportation(mode: String, ctx: &mut TxContext) -> UID {
-        let id = object::new(ctx);
-        transfer::share_object(Transportation {
-            id,
-            mode,
-        });
-        id
+    // Create a new Transportation
+
+    /// Creates a new transportation with the given mode.
+    public fun create_transportation(ctx: &mut TxContext, mode: String) {
+        let transportation = Transportation {
+            id: object::new(ctx),
+            mode: mode,
+        };
+        transfer::share_object(transportation);
     }
 
-    fun new_budget(total: u64, expenses: vector<(String, u64)>, ctx: &mut TxContext) -> UID {
-        let id = object::new(ctx);
-        transfer::share_object(Budget {
-            id,
-            total,
-            expenses,
-        });
-        id
+    // Create a new Budget
+
+    /// Creates a new budget with the given total amount.
+    public fun create_budget(ctx: &mut TxContext, total: u64, expenses: vector<Expense>) {
+        let budget = Budget {
+            id: object::new(ctx),
+            total: total,
+            expenses: expenses,
+        };
+        transfer::share_object(budget);
     }
 
-    fun new_user(username: String, email: String, ctx: &mut TxContext) -> UID {
-        let id = object::new(ctx);
-        transfer::share_object(User {
-            id,
-            username,
-            email,
-        });
-        id
+    // Add Expense
+
+    /// Adds an expense to the budget.
+    public fun add_expense(budget: &mut Budget, expense_name: String, amount: u64) {
+        let expense = Expense { name: expense_name, amount: amount };
+        vector::push_back(&mut budget.expenses, expense);
+        budget.total = budget.total + amount;
     }
 
-    // Public - Entry functions
+    // Get Plan Info
 
-    /// Create a new travel plan
-    public fun new_plan(destination_name: String, destination_description: String, itinerary_activities: vector<String>, accommodation_name: String, accommodation_description: String, accommodation_price: u64, activity_name: String, activity_description: String, activity_price: u64, transportation_mode: String, budget_total: u64, budget_expenses: vector<(String, u64)>, user_username: String, user_email: String, ctx: &mut TxContext) : UID {
-        let destination = new_destination(destination_name, destination_description, ctx);
-        let itinerary = new_itinerary(destination, itinerary_activities, ctx);
-        let accommodation = new_accommodation(accommodation_name, accommodation_description, accommodation_price, ctx);
-        let activity = new_activity(activity_name, activity_description, activity_price, ctx);
-        let transportation = new_transportation(transportation_mode, ctx);
-        let budget = new_budget(budget_total, budget_expenses, ctx);
-        let user = new_user(user_username, user_email, ctx);
-
-        let id = object::new(ctx);
-        transfer::share_object(Plan {
-            id,
-            itinerary,
-            accommodation,
-            activity,
-            transportation,
-            budget,
-            user,
-        });
-        id
+    /// Returns the details of the given plan.
+    public fun get_plan_info(plan: &Plan): (&UID, &UID, &UID, &UID, &UID, &UID) {
+        (
+            &plan.itinerary,
+            &plan.accommodation,
+            &plan.activity,
+            &plan.transportation,
+            &plan.budget,
+            &plan.user
+        )
     }
 
-    /// Get details of a plan
-    public fun get_plan(plan_id: UID): (UID, UID, UID, UID, UID, UID) {
-        let plan = borrow_global<Plan>(plan_id);
-        (plan.itinerary, plan.accommodation, plan.activity, plan.transportation, plan.budget, plan.user)
-    }
+    // Get Budget Info
 
-    /// Update the entire plan
-    public fun update_plan(plan_id: UID, new_itinerary: UID, new_accommodation: UID, new_activity: UID, new_transportation: UID, new_budget: UID, new_user: UID, ctx: &mut TxContext) {
-        let plan = borrow_global_mut<Plan>(plan_id);
-        plan.itinerary = new_itinerary;
-        plan.accommodation = new_accommodation;
-        plan.activity = new_activity;
-        plan.transportation = new_transportation;
-        plan.budget = new_budget;
-        plan.user = new_user;
-    }
-
-    /// Delete a plan
-    public fun delete_plan(plan_id: UID, ctx: &mut TxContext) {
-        let plan = withdraw_from_global<Plan>(plan_id);
-        move_to(&ctx.sender, plan);
-    }
-
-    /// List all plans
-    public fun list_all_plans(ctx: &mut TxContext) -> vector<UID> {
-        // Placeholder: This should return a vector of all plan IDs in a real implementation
-        vector::empty()
-    }
-
-    /// Get publisher details
-    fun get_publisher(shared: &PlatformPublisher): &Publisher {
-        &shared.publisher
-    }
-
-    /// Get destination details
-    public fun get_destination(destination_id: UID): (String, String) {
-        let destination = borrow_global<Destination>(destination_id);
-        (destination.name, destination.description)
-    }
-
-    /// Get accommodation details
-    public fun get_accommodation(accommodation_id: UID): (String, String, u64) {
-        let accommodation = borrow_global<Accommodation>(accommodation_id);
-        (accommodation.name, accommodation.description, accommodation.price)
-    }
-
-    /// Get activity details
-    public fun get_activity(activity_id: UID): (String, String, u64) {
-        let activity = borrow_global<Activity>(activity_id);
-        (activity.name, activity.description, activity.price)
-    }
-
-    /// Get transportation details
-    public fun get_transportation(transportation_id: UID): String {
-        let transportation = borrow_global<Transportation>(transportation_id);
-        transportation.mode
-    }
-
-    /// Get budget details
-    public fun get_budget(budget_id: UID): (u64, vector<(String, u64)>) {
-        let budget = borrow_global<Budget>(budget_id);
+    /// Returns the details of the given budget.
+    public fun get_budget_info(budget: &Budget): (u64, vector<Expense>) {
         (budget.total, budget.expenses)
-    }
-
-    /// Get user details
-    public fun get_user(user_id: UID): (String, String) {
-        let user = borrow_global<User>(user_id);
-        (user.username, user.email)
-    }
-
-    /// Update destination details
-    public fun update_destination(destination_id: UID, new_name: String, new_description: String, ctx: &mut TxContext) {
-        let destination = borrow_global_mut<Destination>(destination_id);
-        destination.name = new_name;
-        destination.description = new_description;
-    }
-
-    /// Update accommodation details
-    public fun update_accommodation(accommodation_id: UID, new_name: String, new_description: String, new_price: u64, ctx: &mut TxContext) {
-        let accommodation = borrow_global_mut<Accommodation>(accommodation_id);
-        accommodation.name = new_name;
-        accommodation.description = new_description;
-        accommodation.price = new_price;
-    }
-
-    /// Update activity details
-    public fun update_activity(activity_id: UID, new_name: String, new_description: String, new_price: u64, ctx: &mut TxContext) {
-        let activity = borrow_global_mut<Activity>(activity_id);
-        activity.name = new_name;
-        activity.description = new_description;
-        activity.price = new_price;
-    }
-
-    /// Update transportation details
-    public fun update_transportation(transportation_id: UID, new_mode: String, ctx: &mut TxContext) {
-        let transportation = borrow_global_mut<Transportation>(transportation_id);
-        transportation.mode = new_mode;
-    }
-
-    /// Update budget details
-    public fun update_budget(budget_id: UID, new_total: u64, new_expenses: vector<(String, u64)>, ctx: &mut TxContext) {
-        let budget = borrow_global_mut<Budget>(budget_id);
-        budget.total = new_total;
-        budget.expenses = new_expenses;
-    }
-
-    /// Update user details
-    public fun update_user(user_id: UID, new_username: String, new_email: String, ctx: &mut TxContext) {
-        let user = borrow_global_mut<User>(user_id);
-        user.username = new_username;
-        user.email = new_email;
     }
 }
